@@ -173,8 +173,8 @@ print("Data concatenated successfully")
 
 print(type(adata.X))#if sparse
 print(adata.obs.columns)
-adata.obs['total_counts'] = adata.X.getnnz(axis=1)#Index
-adata.obs['n_genes_by_counts'] = (adata.X > 0).sum(axis=1)#Index
+adata.obs['total_counts'] = adata.X.sum(axis=1).A1#Index
+adata.obs['n_genes_by_counts'] = (adata.X > 0).sum(axis=1).A1#Index
 adata.var['n_cells'] = (adata.X > 0).sum(axis=0).A1
 # Assign to `adata.var['n_cells']`
 print(adata.obs.columns)
@@ -245,7 +245,7 @@ plt.show()
 
 
 print(f"Initial dataset shape: {adata.shape}")
-sc.pp.filter_cells(adata, min_genes=80)  # Remove cells with less than 50 different genes
+sc.pp.filter_cells(adata, min_genes=200)  # Remove cells with less than 80 different genes
 sc.pp.filter_genes(adata, min_cells=3)   # Remove genes expressed in less than 3 cells
 print(f"Filtered dataset shape: {adata.shape}")
 
