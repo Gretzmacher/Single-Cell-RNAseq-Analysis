@@ -1,0 +1,706 @@
+#-----------------------------------------------------------------
+#------------------Libraries and Fig Parameters-------------------
+#-----------------------------------------------------------------
+import numpy as np
+import scanpy as sc
+import anndata as ad
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import rpy2.robjects as ro
+from rpy2.robjects.packages import importr
+from rpy2.robjects import pandas2ri
+from upsetplot import UpSet
+from scipy.sparse import issparse
+
+# Activate pandas-R conversion
+pandas2ri.activate()
+# Import required R libraries
+base = importr('base')
+utils = importr('utils')
+singleR = importr('SingleR')
+celldex = importr('celldex')
+
+# Load Human Primary Cell Atlas (HPCA) as a reference
+hpca = celldex.HumanPrimaryCellAtlasData()
+
+print("Libraries imported successfully.")
+
+sc.settings.set_figure_params(dpi=50, facecolor="white") #Dots per inch: Resolution of Plot !300or more is publication quality
+
+#-----------------------------------------------------------------
+#-----------------------Loading All Files-------------------------
+#-----------------------------------------------------------------
+matrix_files = [
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\1\Normal\HTA8_6001_001101_counts.mtx",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\2\Normal\HTA8_6002_001101_counts.mtx",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\3\Normal\HTA8_6009_001101_counts.mtx",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\4\Normal\HTA8_6011_001101_counts.mtx",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\5\Normal\HTA8_6013_001101_counts.mtx",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\6\Normal\HTA8_6016_001101_counts.mtx",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\7\Normal\HTA8_6023_001101_counts.mtx",
+    #
+    r"D:\UKW\DataSets\phs002371.v6.p1\1\Tumour\HTA8_6001_002101_counts.mtx",
+    r"D:\UKW\DataSets\phs002371.v6.p1\2\Tumour\HTA8_6002_002101_counts.mtx",
+    r"D:\UKW\DataSets\phs002371.v6.p1\3\Tumour\HTA8_6009_002101_counts.mtx",
+    r"D:\UKW\DataSets\phs002371.v6.p1\4\Tumour\HTA8_6011_002101_counts.mtx",
+    r"D:\UKW\DataSets\phs002371.v6.p1\5\Tumour\HTA8_6013_002101_counts.mtx",
+    r"D:\UKW\DataSets\phs002371.v6.p1\6\Tumour\HTA8_6016_002101_counts.mtx",
+    r"D:\UKW\DataSets\phs002371.v6.p1\7\Tumour\HTA8_6023_002101_counts.mtx",
+]
+genes_files = [
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\1\Normal\HTA8_6001_001101_genes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\2\Normal\HTA8_6002_001101_genes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\3\Normal\HTA8_6009_001101_genes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\4\Normal\HTA8_6011_001101_genes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\5\Normal\HTA8_6013_001101_genes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\6\Normal\HTA8_6016_001101_genes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\7\Normal\HTA8_6023_001101_genes.csv",
+    #
+    r"D:\UKW\DataSets\phs002371.v6.p1\1\Tumour\HTA8_6001_002101_genes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\2\Tumour\HTA8_6002_002101_genes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\3\Tumour\HTA8_6009_002101_genes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\4\Tumour\HTA8_6011_002101_genes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\5\Tumour\HTA8_6013_002101_genes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\6\Tumour\HTA8_6016_002101_genes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\7\Tumour\HTA8_6023_002101_genes.csv",
+]
+barcodes_files = [
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\1\Normal\HTA8_6001_001101_barcodes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\2\Normal\HTA8_6002_001101_barcodes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\3\Normal\HTA8_6009_001101_barcodes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\4\Normal\HTA8_6011_001101_barcodes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\5\Normal\HTA8_6013_001101_barcodes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\6\Normal\HTA8_6016_001101_barcodes.csv",
+    #    r"D:\UKW\DataSets\phs002371.v6.p1\7\Normal\HTA8_6023_001101_barcodes.csv",
+    #
+    r"D:\UKW\DataSets\phs002371.v6.p1\1\Tumour\HTA8_6001_002101_barcodes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\2\Tumour\HTA8_6002_002101_barcodes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\3\Tumour\HTA8_6009_002101_barcodes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\4\Tumour\HTA8_6011_002101_barcodes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\5\Tumour\HTA8_6013_002101_barcodes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\6\Tumour\HTA8_6016_002101_barcodes.csv",
+    r"D:\UKW\DataSets\phs002371.v6.p1\7\Tumour\HTA8_6023_002101_barcodes.csv",
+]
+for i in range(7):
+    if os.path.exists(matrix_files[i]):
+        print(f"Matrix file {i+1} exists.")
+    else:
+        print(f"Matrix file {i+1} does not exist.")
+    if os.path.exists(genes_files[i]):
+        print(f"Genes file {i+1} exists.")
+    else:
+        print(f"Genes file {i+1} does not exist.")
+    if os.path.exists(barcodes_files[i]):
+        print(f"Barcodes file {i+1} exists.")
+    else:
+        print(f"Barcodes file {i+1} does not exist.")
+adatas = [] # Initialise List
+gene_lists = [] # Initialise List of Gene names
+
+#-------------------Loading Matrix----------------------
+for i in range(7):
+    #adata = sc.read_mtx(matrix_files[i]).transpose() #If needs transposing
+    adata = sc.read_mtx(matrix_files[i])
+    print(f"Shape of Matrix {i+1} (n_cells, n_genes): {adata.shape}")
+    print(f"Matrix {i+1} Loaded Successfully")
+
+    #---------Loading Gene Names and Annotating Genes in Matrix--------
+    gene_names = pd.read_csv(genes_files[i], header=None, sep=',', usecols=[1], names=['gene_name'])
+    if adata.shape[1] == gene_names.shape[0]:
+        adata.var_names = gene_names['gene_name'].values
+    else:
+        print(f"Warning: Mismatch in number of genes for sample {i+1}")
+    adata.var_names_make_unique()
+    print("Genes Successfully Annotated")
+
+    # Collect the gene names
+    gene_lists.append(set(adata.var_names))
+
+    #---------Loading Cell Barcodes and Annotating Cells in Matrix--------
+    cell_barcodes = pd.read_csv(barcodes_files[i], header=None, sep=',')
+    #check for duplicates
+    if cell_barcodes[0].duplicated().any():
+        print(f"Warning: Duplicate barcodes found in sample {i+1}")
+    #select only the first n_obs to match the number of cells in adata
+    cell_barcodes = cell_barcodes[0].values[:adata.n_obs]
+
+    adata.obs_names = [f"{barcode}_sample_{i+1}" for barcode in cell_barcodes]
+    adata.obs_names_make_unique()
+    print("Cells Successfully Annotated")
+
+    #----------------------------Adding sample----------------------------
+    adata.obs['sample'] = f'sample_{i+1}'
+    adatas.append(adata) #Append the adata to the list
+
+#-------------------Calculating Shared Genes--------------------------
+shared_genes = set.intersection(*map(set, gene_lists))
+print(f"Number of shared genes: {len(shared_genes)}")
+#adata.X = adata.X.astype(np.float64)# Added because of error:
+# numpy._core._exceptions._ArrayMemoryError: Unable to allocate 18.7 GiB for an array with shape (33538, 74763) and data type float64
+#adata.obs.index = adata.obs.index.astype(np.int64) if isinstance(adata.obs.index[0], int) else adata.obs.index
+
+# Create a dictionary to track genes in each sample
+gene_presence = {f"sample_{i+1}": gene_set for i, gene_set in enumerate(gene_lists)}
+
+# Convert to a dataframe for visualization
+genes_df = pd.DataFrame(
+    {sample: [gene in gene_set for gene in shared_genes] for sample, gene_set in gene_presence.items()},
+    index=list(shared_genes)
+)
+
+# Optionally print out or visualize the dataframe
+print(genes_df.head())
+
+# Identify genes present in more than one sample
+genes_present_in_multiple_samples = genes_df.sum(axis=1) > 1
+# Filter genes that are present in more than one sample
+genes_to_include = genes_present_in_multiple_samples[genes_present_in_multiple_samples].index
+print(f"Number of genes present in more than one sample: {len(genes_to_include)}")
+#-------------------concatenating all Lists--------------------------
+adata = ad.concat(adatas, axis=0)
+if adata.obs_names.duplicated().any():
+    print("Warning: Duplicates found after concatenation")
+adata.obs_names_make_unique()
+
+adata.obs['sample'] = adata.obs['sample'].astype('category')
+print(adata.obs["sample"].value_counts()) #How Many Cells per Sample
+
+adata.obs_names_make_unique()
+adata.var_names_make_unique()
+print(f"(n_cells, n_genes): {adata.shape}")
+print("Data concatenated successfully")
+#adata.write('your_data.h5ad')
+#adata = sc.read_h5ad('your_data.h5ad', backed='r+')
+
+#-----------------------------------------------------------------
+#---------------------------Prefiltering--------------------------
+#-----------------------------------------------------------------
+
+#gene_expression_counts = np.sum(adata.X > 0, axis=0)  # Axis 0: sum over cells
+# Filter genes that are expressed in less than 3 cells
+#genes_expressed_in_less_than_100_cells = gene_expression_counts < 100
+# Count how many genes are expressed in less than 3 cells
+#num_genes_expressed_in_less_than_100_cells = np.sum(genes_expressed_in_less_than_100_cells)
+#print(f"Number of genes expressed in less than 100 cells: {num_genes_expressed_in_less_than_100_cells}")
+
+
+print(type(adata.X))#if sparse
+print(adata.obs.columns)
+adata.obs['total_counts'] = adata.X.sum(axis=1).A1#Index
+adata.obs['n_genes_by_counts'] = (adata.X > 0).sum(axis=1).A1#Index
+adata.var['n_cells'] = (adata.X > 0).sum(axis=0).A1
+# Assign to `adata.var['n_cells']`
+print(adata.obs.columns)
+print(adata.var['n_cells'].shape)  # Should print (16504,)
+
+print(adata.obs['total_counts'].head())
+print(adata.obs['n_genes_by_counts'].head())
+print(adata.var['n_cells'].head())
+#fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+#sns.histplot(adata.obs['total_counts'], kde=True, ax=axes[0])
+#axes[0].set_title("total_counts")
+
+#sns.histplot(adata.obs['n_genes_by_counts'], kde=True, ax=axes[1])
+#axes[1].set_title("n_genes_by_counts")
+
+#plt.tight_layout() #Adjust layout to avoid overlap
+#plt.show()
+# Apply Prefiltering to avoid scrubelt-error: high is out of bounds for int32
+# Print initial and filtered dataset shape
+# Log-transform the data if the values are heavily skewed
+adata.obs['log_total_counts'] = np.log1p(adata.obs['total_counts'])
+adata.obs['log_n_genes_by_counts'] = np.log1p(adata.obs['n_genes_by_counts'])
+adata.var['log_n_cells'] = np.log1p(adata.var['n_cells'])
+#n_cells_expressed = np.sum(adata.X > 0, axis=0)  # Count how many cells each gene is expressed in
+#adata.var['log_n_cells'] = np.log1p(adata.var['n_cells'])
+# Create a frequency table
+gene_counts = pd.Series(adata.var['n_cells'])
+frequency_table = gene_counts.value_counts().sort_index()
+# Print to verify
+print(frequency_table.head(20))  # See the first few values
+
+print(adata.obs['total_counts'].describe())
+print(adata.obs['n_genes_by_counts'].describe())
+
+#0a Create histograms with KDE
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+# How Many Times Do Cells have Certain num Genes
+sns.histplot(adata.obs['log_total_counts'], kde=True, ax=axes[0], bins=50, kde_kws={'bw_adjust': 0.5})
+axes[0].set_title("Log-transformed Total Counts")
+axes[0].set_xlabel("Log(Total Counts)")  # Adding axis labels
+axes[0].set_ylabel("Frequency")
+
+# How Many Times Do Cells have certain num Different Genes
+sns.histplot(adata.obs['log_n_genes_by_counts'], kde=True, ax=axes[1], bins=50, kde_kws={'bw_adjust': 0.5})
+axes[1].set_title("Log-transformed Genes by Counts")
+axes[1].set_xlabel("Log(Genes by Counts)")  # Adding axis labels
+axes[1].set_ylabel("Frequency")
+
+# How Many Times are Genes expressed in certain num Cells
+#For finding Filtering Threshold
+#sns.histplot(adata.var['log_n_cells'], kde=True, ax=axes[2], bins=50, kde_kws={'bw_adjust': 0.5})
+#axes[2].set_title("Gene Expression Across Cells")
+#axes[2].set_xlabel("Number of Cells Expressing the Gene")  # X-axis label
+#axes[2].set_ylabel("Number of Genes")  # Y-axis label
+#plt.figure(figsize=(10, 6))
+sns.barplot(x=frequency_table.index[:25], y=frequency_table.values[:25])  # Limit to the first 100 cells for clarity
+plt.title("Gene Expression Across Cells")
+plt.xlabel("Number of Cells Expressing the Gene")
+plt.ylabel("Number of Genes")
+plt.xticks(rotation=90)  # Rotate x-axis labels if needed
+
+# Optional: Plot the third plot if necessary (e.g., outliers or another variable)
+# sns.histplot(adata.obs['some_other_variable'], kde=True, ax=axes[2], bins=50)
+
+plt.tight_layout()  # Adjust layout to avoid overlap
+plt.show()
+
+
+print(f"Initial dataset shape: {adata.shape}")
+sc.pp.filter_cells(adata, min_genes=200)  # Remove cells with less than 80 different genes
+sc.pp.filter_genes(adata, min_cells=3)   # Remove genes expressed in less than 3 cells
+print(f"Filtered dataset shape: {adata.shape}")
+
+# Log-transform the data if the values are heavily skewed
+adata.obs['log_total_counts'] = np.log1p(adata.obs['total_counts'])
+adata.obs['log_n_genes_by_counts'] = np.log1p(adata.obs['n_genes_by_counts'])
+
+#0b Create histograms with KDE
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+# Plot total counts
+sns.histplot(adata.obs['log_total_counts'], kde=True, ax=axes[0], bins=50, kde_kws={'bw_adjust': 0.5})
+axes[0].set_title("Log-transformed Total Counts")
+axes[0].set_xlabel("Log(Total Counts)")  # Adding axis labels
+axes[0].set_ylabel("Frequency")
+
+# Plot genes by counts
+sns.histplot(adata.obs['log_n_genes_by_counts'], kde=True, ax=axes[1], bins=50, kde_kws={'bw_adjust': 0.5})
+axes[1].set_title("Log-transformed Genes by Counts")
+axes[1].set_xlabel("Log(Genes by Counts)")  # Adding axis labels
+axes[1].set_ylabel("Frequency")
+
+# Optional: Plot the third plot if necessary (e.g., outliers or another variable)
+# sns.histplot(adata.obs['some_other_variable'], kde=True, ax=axes[2], bins=50)
+
+plt.tight_layout()  # Adjust layout to avoid overlap
+plt.show()
+
+#----------------------------Computing Attributes----------------------------
+adata.var["mt"] = adata.var_names.str.startswith('MT-')
+adata.var["ribo"] = adata.var_names.str.startswith(('RPS', 'RPL'))
+adata.var["hb"] = adata.var_names.str.startswith('HB')
+print("Genes Successfully Annotated")
+
+cell_cycle_genes = {
+    'G1/S': ['MCM5', 'PCNA', 'TYMS', 'FEN1', 'MCM2', 'MCM4', 'RRM1', 'UNG', 'GINS2', 'MCM6', 'CDCA7', 'DTL', 'PRIM1', 'UHRF1', 'HELLS', 'RFC2', 'RPA2', 'NASP', 'RAD51AP1', 'GMNN', 'WDR76', 'SLBP', 'CCNE2', 'UBR7', 'POLD3', 'MSH2', 'ATAD2', 'RAD51', 'RRM2', 'CDC45', 'CDC6', 'EXO1', 'TIPIN', 'DSCC1', 'BLM', 'CASP8AP2', 'USP1', 'CLSPN', 'POLA1', 'CHAF1B', 'BRIP1', 'E2F8'],
+    'G2/M': ['HMGB2', 'CDK1', 'NUSAP1', 'UBE2C', 'BIRC5', 'TPX2', 'TOP2A', 'NDC80', 'CKS2', 'NUF2', 'CKS1B', 'MKI67', 'TMPO', 'CENPF', 'TACC3', 'SMC4', 'CCNB2', 'CKAP2L', 'CKAP2', 'AURKB', 'BUB1', 'KIF11', 'ANP32E', 'TUBB4B', 'GTSE1', 'KIF20B', 'HJURP', 'CDCA3', 'CDC20', 'TTK', 'CDC25C', 'KIF2C', 'RANGAP1', 'NCAPD2', 'DLGAP5', 'CDCA2', 'CDCA8', 'ECT2', 'KIF23', 'HMMR', 'AURKA', 'PSRC1', 'ANLN', 'LBR', 'CKAP5', 'CENPE', 'CTCF', 'NEK2', 'G2E3', 'GAS2L3', 'CBX5', 'CENPA']
+}
+
+sex_genes = ['SRY', 'ZFY', 'TSPY1', 'XIST', 'TSIX', 'KDM5C']
+sex_genes_in_data = [gene for gene in sex_genes if gene in adata.var_names]
+adata.obs['sex_gene_expression'] = adata[:, sex_genes_in_data].X.sum(axis=1)
+
+qc_vars = ['mt']
+if adata.var['ribo'].sum() > 0:
+    qc_vars.append('ribo')
+if adata.var['hb'].sum() > 0:
+    qc_vars.append('hb')
+print(adata)
+
+#Some Cells have zero counts!
+# Check if adata.X is a sparse matrix
+#if issparse(adata.X):
+# Check if there are any elements stored
+#    if adata.X.nnz == 0:  # nnz is the number of stored values, and 0 means it's empty
+#        print("adata.X is a sparse matrix with zero stored elements. No NaN check needed.")
+#    else:
+# Convert to dense array for NaN checking
+#        dense_X = adata.X.toarray()
+#        print(dense_X[np.isnan(dense_X).any(axis=1)])
+#else:
+# If it's not sparse, proceed with normal numpy NaN checking
+#    print(adata.X[np.isnan(adata.X).any(axis=1)])
+
+#-----------------------------------------------------------------
+#-------------------Filter, Regress, Normalise---------------------
+#-----------------------------------------------------------------
+sc.pp.calculate_qc_metrics(
+    adata, qc_vars=["mt", "ribo", "hb"], inplace=True, percent_top=[20], log1p=True
+)
+sc.tl.score_genes_cell_cycle(adata,
+                             s_genes=cell_cycle_genes['G1/S'],
+                             g2m_genes=cell_cycle_genes['G2/M'],
+                             )
+sc.pp.scrublet(adata, batch_key="sample")
+
+print(adata.obs.index[:10])  # Check index format for consistency
+
+print(adata.obs.columns)
+
+print(f"Before Outlier Deletion. Cells: {adata.n_obs}, Genes: {adata.n_vars}")
+#0c 1) Each gene has expression in at least 3 cells, And Cell has at least 100 genes, No Doublets
+
+fig, axes = plt.subplots(3, 2, figsize=(10, 15))
+sns.histplot(adata.obs['log1p_total_counts'], kde=True, ax=axes[0, 0])
+axes[0, 0].set_title("log1p_total_counts")
+
+sns.histplot(adata.obs['log1p_n_genes_by_counts'], kde=True, ax=axes[0, 1])
+axes[0, 1].set_title("log1p_n_genes_by_counts")
+
+sns.histplot(adata.obs['pct_counts_mt'], kde=True, ax=axes[1, 0])
+axes[1, 0].set_title("pct_counts_mt")
+
+sns.histplot(adata.obs['pct_counts_ribo'], kde=True, ax=axes[1, 1])
+axes[1, 1].set_title("pct_counts_ribo")
+
+sns.histplot(adata.obs['pct_counts_hb'], kde=True, ax=axes[2, 0])
+axes[2, 0].set_title("pct_counts_hb")
+
+plt.tight_layout() #Adjust layout to avoid overlap
+plt.show()
+
+from scipy.stats import median_abs_deviation
+def is_outlier(adata, metric: str, nmads: int):
+    M = adata.obs[metric]
+    if metric not in adata.obs.columns:
+        raise ValueError(f"{metric} not found in adata.obs")
+    outlier = (M < np.median(M) - nmads * median_abs_deviation(M)) | (
+            M > np.median(M) + nmads * median_abs_deviation(M)
+    )
+    return outlier
+
+#adata.obs["outlier"]=(
+#        is_outlier(adata, "log1p_total_counts", 5)
+#        | is_outlier(adata, "log1p_n_genes_by_counts", 5)
+#)
+def filter_outliers(adata):
+    # Initialize the 'outlier' column if it doesn't exist
+    if "outlier" not in adata.obs.columns:
+        adata.obs["outlier"] = False
+
+    adata.obs["outlier"] |= (adata.obs["pct_counts_mt"] > 20)#%
+    adata.obs["outlier"] |= (adata.obs["pct_counts_ribo"] > 35)#%
+    adata.obs["outlier"] |= (adata.obs["pct_counts_hb"] > 3)#%
+
+    adata = adata[~adata.obs.outlier, :]
+    adata.obs_names_make_unique()
+    print(f"After Outlier Deletion. Cells: {adata.n_obs}, Genes: {adata.n_vars}")
+    return adata
+
+#0d After Filtering. Cells: 74763, Genes: 33538+
+adata = filter_outliers(adata)
+
+fig, axes = plt.subplots(3, 2, figsize=(10, 15))
+sns.histplot(adata.obs['log1p_total_counts'], kde=True, ax=axes[0, 0])
+axes[0, 0].set_title("log1p_total_counts")
+
+sns.histplot(adata.obs['log1p_n_genes_by_counts'], kde=True, ax=axes[0, 1])
+axes[0, 1].set_title("log1p_n_genes_by_counts")
+
+sns.histplot(adata.obs['pct_counts_mt'], kde=True, ax=axes[1, 0])
+axes[1, 0].set_title("pct_counts_mt")
+
+sns.histplot(adata.obs['pct_counts_ribo'], kde=True, ax=axes[1, 1])
+axes[1, 1].set_title("pct_counts_ribo")
+
+sns.histplot(adata.obs['pct_counts_hb'], kde=True, ax=axes[2, 0])
+axes[2, 0].set_title("pct_counts_hb")
+
+plt.tight_layout()
+plt.show()
+
+#-----------------------------------------------------------------
+#-------------------------------QC--------------------------------
+#-----------------------------------------------------------------
+#1-------------------------Violin Plot----------------------------
+fig, axes = plt.subplots(3, 1, figsize=(5, 15))
+palette = sns.color_palette("husl", len(adata.obs['sample'].unique()))  # Use a qualitative color palette
+
+#Panel 1: Num of diff Genes per Cell
+sc.pl.violin(
+    adata,
+    keys=['n_genes_by_counts'],
+    jitter=0.4,
+    ax=axes[0],
+    groupby='sample',  #Group by sample to color dots
+    palette=palette,
+    show=False
+)
+#Panel 2: Total num of Genes per Cell
+sc.pl.violin(
+    adata,
+    keys=['total_counts'],
+    jitter=0.4,
+    ax=axes[1],
+    groupby='sample',  #Group by sample to color dots
+    palette=palette,
+    show=False
+)
+axes[1].set_yscale('log') #Apply logScale to Y-Axis
+#Panel 3: Num of MT-Genes per Cell
+sc.pl.violin(
+    adata,
+    keys=['pct_counts_mt'],
+    jitter=0.4,
+    ax=axes[2],
+    groupby='sample',  #Group by sample to color dots
+    palette=palette,
+    show=False
+)
+plt.tight_layout() #Adjust layout to avoid overlap
+plt.show()
+
+#2-----------------------Normalising--------------------
+# Before normalization
+print(f"Minimum value before normalisation: {np.min(adata.X)}")
+print(f"Maximum value before normalisation: {np.max(adata.X)}")
+#Minimum value before normalization: 0.0
+#Maximum value before normalization: 45026.0
+
+#adata = adata.copy()
+adata.layers["counts"] = adata.X.copy() #Storing Raw Counts Data
+#adata = adata[adata.X.sum(axis=1) > 0].copy()
+sc.pp.normalize_total(adata, target_sum=10e4) #Normalizing to Cells having same Total Expression
+
+#adata = adata[adata.obs['total_counts'] > 0].copy()
+#adata = adata[:, adata.X.sum(axis=0) > 0].copy()
+#print(f"After Rem of 0 Counts. Cells: {adata.n_obs}, Genes: {adata.n_vars}")
+sc.pp.log1p(adata) #logNum of Gene Expressions
+print("Data Normalised")
+
+#After normalization
+print(f"Minimum value after normalisation: {np.min(adata.X)}")
+print(f"Maximum value after normalisation: {np.max(adata.X)}")
+#Minimum value after normalization: 0.0
+#Maximum value after normalization: 11.304033279418945
+
+adata.raw=adata
+
+#2----------------------------QC metrics---------------------------
+sc.pl.scatter(adata, "total_counts", "n_genes_by_counts", color="pct_counts_mt")
+#axes[1].set_yscale('log') #Apply logScale to Y-Axis
+plt.show() #% of MT-Genes in Cell
+
+#3-----------------------Regression--------------------
+# 2) The genetic count per cell ranges from 300 to 7000
+# 3) No more than 10% of mitochondrial genes are expressed
+# 4) The proportion of human blood-derived genes expressed is less than 3%
+adata = adata[adata.X.sum(axis=1) > 0].copy()
+sc.pp.regress_out(adata, keys=['total_counts','pct_counts_mt','pct_counts_ribo','pct_counts_hb','S_score','G2M_score','sex_gene_expression'])
+print(f"After Regression. Cells: {adata.n_obs}, Genes: {adata.n_vars}")
+
+
+#3--------------Select Highly Variably Expressed Genes---------------
+sc.pp.highly_variable_genes(adata, n_top_genes=2000, batch_key="sample")
+sc.pl.highly_variable_genes(adata)
+plt.show() #Display feature selection plot
+
+#4-------------Generate Eigenvectors to Reduce Dimensions------------
+sc.tl.pca(adata)
+sc.pl.pca_variance_ratio(adata, n_pcs=50, log=True)
+plt.show() #Show Distribution of 50 PCs with Highest Variance
+
+#5----------------------PCAs with best Eigenvectors-----------------
+explained_variance = adata.uns['pca']['variance_ratio'][:4] * 100 # Calculate the explained variance percentage for each PCA component
+sc.pl.pca(
+    adata,
+    color=["sample", "sample", "pct_counts_mt", "pct_counts_mt"],
+    dimensions=[(0, 1), (2, 3), (0, 1), (2, 3)],
+    ncols=2,
+    size=2,
+    show=False
+)
+
+# Get the current figure and axis objects
+fig = plt.gcf()
+axes = fig.axes
+# Adjust the axis labels to include explained variance percentage
+for i, ax in enumerate(axes[:4]):
+    if i % 2 == 0:  # Even index: PC1 vs PC2
+        x_pc, y_pc = 0, 1
+    else:  # Odd index: PC3 vs PC4
+        x_pc, y_pc = 2, 3
+
+    ax.set_xlabel(f'PC{x_pc+1} ({explained_variance[x_pc]:.2f}% variance)')
+    ax.set_ylabel(f'PC{y_pc+1} ({explained_variance[y_pc]:.2f}% variance)')
+
+#plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1, hspace=0.3, wspace=0.3)
+plt.show()
+
+#6-----------------------UMAP Nearest Neighbour----------------------
+sc.pp.neighbors(adata, n_neighbors=10)#Computes 15 NNs for each Cell
+sc.tl.umap(adata)#Dimension Reduction and Projection
+sc.pl.umap(
+    adata,
+    color="sample",#Sample Coloures cells
+    size=2,#Size of points
+)
+plt.show() #Nearest neighbour plot
+
+#7-----------------------------Clustering----------------------------------
+#sc.tl.leiden(adata, resolution = 0.6, key_added = "leiden_0.6")
+sc.tl.leiden(adata, resolution = 0.8, key_added = "leiden_0.8")
+sc.tl.leiden(adata, key_added = "leiden_1.0") # default resolution in 1.0
+#sc.tl.leiden(adata, resolution = 1.4, key_added = "leiden_1.4")
+
+fig, ax = plt.subplots(figsize=(8, 6))
+ax = sc.pl.umap(adata, color=['leiden_0.8'], ax=ax,show=False)
+cluster_counts = adata.obs['leiden_0.8'].value_counts()
+# Get the UMAP coordinates
+umap_coords = adata.obsm['X_umap']
+
+# Loop through each cluster and add text annotation
+for cluster_id in cluster_counts.index:
+    # Find the center of each cluster
+    cluster_cells = adata.obs['leiden_0.8'] == cluster_id
+    cluster_center = umap_coords[cluster_cells].mean(axis=0)
+
+    # Add text annotation for each cluster
+    ax.text(cluster_center[0], cluster_center[1],
+            f'{cluster_id}',
+            fontsize=12, ha='center', va='center', color='black')
+# Show the plot
+plt.show()
+
+#8-----------------Hierarchical Clustering-------------------------------
+sc.tl.dendrogram(adata, groupby = "leiden_0.8")
+sc.pl.dendrogram(adata, groupby = "leiden_0.8")
+plt.show()
+
+#9------------Checking for Doublets, Genes, MTs and diff Genes------------
+sc.pl.umap(
+    adata,
+    color=['leiden_0.8', 'predicted_doublet', 'doublet_score', 'log1p_total_counts', 'pct_counts_mt', 'log1p_n_genes_by_counts'],
+    wspace=0.5,#Horizontal Space between Panels
+    size=2,
+    ncols=2,
+)
+plt.show()
+
+#10-----------------------Dot Plot---------------------------------------
+#genes  = ["ASCL2","OLFM4","LGR5","TFF3", "AGR2", "KRT8", "KRT18","EPCAM", "PIGR", "CEACAM5","IL7R", "SARAF", "LTB","CCL5", "RORA", "GZMA","COL1A1", "COL3A1", "DCN","CD79A", "MS4A1", "TPSAB1","JCHAIN", "MZB1","S100A8", "S100A9", "CXCL8","STMN1", "PTTG1", "HMGB2","PLVAP", "VWF", "PECAM1","TAGLN", "RGS5", "ACTA2"]
+#sc.pl.dotplot(adata, genes, groupby='leiden_0.8', dendrogram=True)
+#plt.show()#DotPlot
+genes  = ["IL7R","SARAF","LTB","CCL5","RORA","GZMA","COL1A1","COL3A1","DCN","EPCAM","PIGR","CEACAM5","CD79A","MS4A1","CD37","C1QA","LYZ","CD68","KIT","CPA3","TPSAB1","JCHAIN","MZB1","TFF3","AGR2","KRT8","KRT18","S100A8","S100A9","CXCL8","STMN1","PTTG1","HMGB2","PLVAP","VWF","PECAM1","TAGLN","RGS5","ACTA2"]
+sc.pl.dotplot(adata, genes, groupby='leiden_0.8', dendrogram=True)
+plt.show()#DotPlot
+#Marker-Genes:
+#CSC: ["TFF3", "AGR2", "KRT8", "KRT18"],
+#CC: ["EPCAM", "PIGR", "CEACAM5"],
+#CD4+ T Cells: ["IL7R", "SARAF", "LTB"],
+#CD8+ T Cells: ["CCL5", "RORA", "GZMA"],
+#Fibroblasts: ["COL1A1", "COL3A1", "DCN"],
+#B Cells: ["CD79A", "MS4A1", "TPSAB1"],
+#Plasma Cells: ["JCHAIN", "MZB1"],
+#Neutrophils: ["S100A8", "S100A9", "CXCL8"],
+#Mesenchymal Stem Cells: ["STMN1", "PTTG1", "HMGB2"],
+#Endothelial Cells: ["PLVAP", "VWF", "PECAM1"],
+#Smooth Muscle Cells: ["TAGLN", "RGS5", "ACTA2"],
+
+#11-----------------Annotate Clusters-----------------------------------
+#adata.obs["cell_type_lvl1"] = adata.obs["leiden_res_0.02"].map(
+#    {
+#        "0": "CSC",
+#        "1": "CC",
+#        "2": "CD4+ T Cells",
+#        "3": "CD8+ T Cells",
+#        "4": "Fibroblasts",
+#        "5": "B Cells",
+#       "6": "Macrophages",
+#        "7": "Mast Cells",
+#        "8": "Plasma Cells",
+#        "9": "Neutrophils",
+#        "10": "Mesenchymal SC",
+#        "11": "Endothelial Cells",
+#        "12": "Smooth Muscle Cells",
+#    }
+#)
+#-----------------------------------------------------------------
+#2-------------------------Selected Genes-------------------------
+#-----------------------------------------------------------------
+adata.obs['ALCAM_present'] = adata[:, "ALCAM"].X.toarray().flatten() > 0
+adata.obs['EPCAM_present'] = adata[:, "EPCAM"].X.toarray().flatten() > 0
+adata.obs['OLFM4_present'] = adata[:, "OLFM4"].X.toarray().flatten() > 0
+adata.obs['CEACAM6_present'] = adata[:, "CEACAM6"].X.toarray().flatten() > 0
+#adata.obs['CD133_present'] = adata[:, "CD133"].X.toarray().flatten() > 0
+adata.obs['PROCR_present'] = adata[:, "PROCR"].X.toarray().flatten() > 0
+adata.obs['SCD_present'] = adata[:, "SCD"].X.toarray().flatten() > 0
+adata.obs['CD24_present'] = adata[:, "CD24"].X.toarray().flatten() > 0
+#adata.obs['CD44v6_present'] = adata[:, "CD44v6"].X.toarray().flatten() > 0
+adata.obs['LGR5_present'] = adata[:, "LGR5"].X.toarray().flatten() > 0
+adata.obs['ASCL2_present'] = adata[:, "ASCL2"].X.toarray().flatten() > 0
+adata.obs['EPHB2_present'] = adata[:, "EPHB2"].X.toarray().flatten() > 0
+#adata.obs['PROMI_present'] = adata[:, "PROMI"].X.toarray().flatten() > 0
+adata.obs['AXIN2_present'] = adata[:, "AXIN2"].X.toarray().flatten() > 0
+#adata.obs['HPA_present'] = adata[:, "HPA"].X.toarray().flatten() > 0
+adata.obs['SLC12A2_present'] = adata[:, "SLC12A2"].X.toarray().flatten() > 0
+adata.obs['RNF43_present'] = adata[:, "RNF43"].X.toarray().flatten() > 0
+adata.obs['LEFTY1_present'] = adata[:, "LEFTY1"].X.toarray().flatten() > 0
+adata.obs['CD44_present'] = adata[:, "CD44"].X.toarray().flatten() > 0
+
+#'CEACAM1','CEACAM3','CEACAM4','CEACAM5','CEACAM6','CEACAM7','CEACAM8','CEACAM16'
+#'CEACAM18','CEACAM19','CEACAM20','CEACAM21'
+
+#'CEACAM1_present','CEACAM3_present','CEACAM4_present','CEACAM5_present','CEACAM6_present','CEACAM7_present','CEACAM8_present','CEACAM16_present'
+#'CEACAM18_present','CEACAM19_present','CEACAM20_present','CEACAM21_present'
+
+##2a----------------------------Present----------------------------
+sc.pl.umap(
+    adata,
+    color=['ALCAM', 'CD44','ALCAM_present','CD44_present',],
+    palette=["lightblue","darkblue"],
+    wspace=1.0,
+    ncols=2,
+)
+plt.tight_layout() #Adjust layout to avoid overlap
+#plt.show() #8More QC Metrics
+
+#2b---------------------Heat Map of Gene Observations--------------------
+sc.pl.umap(
+    adata,
+    color=['AXIN2','SLC12A2','SCD','EPHB2','CEACAM6','LGR5','LEFTY1','OLFM4','SLC12A2','ASCL2','AGR2','ASCL2',],
+    palette=["lightblue","darkblue"],
+    wspace=1.0,
+    ncols=3,
+)
+plt.tight_layout() #Adjust layout to avoid overlap
+#plt.show()
+
+
+# Load your AnnData object
+adata = sc.read_h5ad("your_file.h5ad")
+
+# Prepare expression matrix (transpose to gene-by-cell for R)
+expression_matrix = pd.DataFrame(
+    adata.X.T.toarray(),
+    index=adata.var_names,  # Genes
+    columns=adata.obs_names  # Cells
+)
+
+# Convert to R-compatible DataFrame
+r_matrix = pandas2ri.py2rpy(expression_matrix)
+
+# Run SingleR
+singleR_results = singleR.SingleR(
+    test=r_matrix,  # Expression matrix
+    ref=hpca,       # Reference dataset
+    labels=hpca.rx2("label.main")  # Reference labels
+)
+
+# Extract cell type predictions
+predictions = pandas2ri.rpy2py(singleR_results.rx2('labels'))
+
+# Add predictions back to AnnData
+adata.obs['SingleR_CellType'] = predictions.values
+
+# UMAP with SingleR predictions
+sc.pl.umap(adata, color='SingleR_CellType', title='SingleR Cell Type Annotation')
+
+# Save annotated dataset
+adata.write_h5ad("annotated_adata.h5ad")
+
+print("Script Finished Successfully")
