@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import scipy.sparse
 import rpy2.robjects as ro
 from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri
@@ -24,6 +25,7 @@ celldex = importr('celldex')
 
 # Load Human Primary Cell Atlas (HPCA) as a reference
 hpca = celldex.HumanPrimaryCellAtlasData()
+
 
 print("Libraries imported successfully.")
 
@@ -420,6 +422,16 @@ plt.show()
 fig, axes = plt.subplots(3, 1, figsize=(5, 15))
 palette = sns.color_palette("husl", len(adata.obs['sample'].unique()))  # Use a qualitative color palette
 
+# Assuming you are plotting a Seaborn plot, for example a scatter plot:
+#fig, axes = plt.subplots(3, 1, figsize=(5, 15))
+
+# Set a qualitative color palette
+#palette = sns.color_palette("husl", len(adata.obs['sample'].unique()))
+
+# Plotting the data with hue set to 'sample' and the corresponding palette
+#sns.scatterplot(data=adata.obs, x="x_variable", y="y_variable", hue="sample", palette=palette, ax=axes[0], legend=False)
+
+
 #Panel 1: Num of diff Genes per Cell
 sc.pl.violin(
     adata,
@@ -499,6 +511,8 @@ sc.pp.highly_variable_genes(adata, n_top_genes=2000, batch_key="sample")
 sc.pl.highly_variable_genes(adata)
 plt.show() #Display feature selection plot
 
+
+adata.write("preprocessed_data.h5ad")
 #4-------------Generate Eigenvectors to Reduce Dimensions------------
 sc.tl.pca(adata)
 sc.pl.pca_variance_ratio(adata, n_pcs=50, log=True)
@@ -565,6 +579,8 @@ for cluster_id in cluster_counts.index:
             fontsize=12, ha='center', va='center', color='black')
 # Show the plot
 plt.show()
+adata.obs['leiden'] = adata.obs['leiden_0.8']
+adata.write("preprocessed_with_clustering.h5ad")
 
 #8-----------------Hierarchical Clustering-------------------------------
 sc.tl.dendrogram(adata, groupby = "leiden_0.8")
@@ -670,37 +686,68 @@ sc.pl.umap(
 plt.tight_layout() #Adjust layout to avoid overlap
 #plt.show()
 
+# Ensure adata.X is dense
+if isinstance(adata.X, scipy.sparse.spmatrix):
+    expression_matrix = pd.DataFrame(
+        adata.X.T.toarray(),  # Convert sparse matrix to dense
+        index=adata.var_names,  # Genes
+        columns=adata.obs_names  # Cells
+    )
+else:
+    expression_matrix = pd.DataFrame(
+        adata.X.T,  # Already dense, just transpose
+        index=adata.var_names,  # Genes
+        columns=adata.obs_names  # Cells
+    )
 
-# Load your AnnData object
-adata = sc.read_h5ad("your_file.h5ad")
 
-# Prepare expression matrix (transpose to gene-by-cell for R)
-expression_matrix = pd.DataFrame(
-    adata.X.T.toarray(),
-    index=adata.var_names,  # Genes
-    columns=adata.obs_names  # Cells
-)
+# Load hpca and extract label.main field in R
+ro.r('library(celldex)')  # Load celldex package in R
+ro.r('hpca <- celldex::HumanPrimaryCellAtlasData()')  # Load the hpca dataset
 
-# Convert to R-compatible DataFrame
-r_matrix = pandas2ri.py2rpy(expression_matrix)
+# Extract 'label.main' from hpca (which is in the colData of SummarizedExperiment)
+ro.r('labels <- hpca@colData@listData$label.main')  # Extract the main cell labels
 
-# Run SingleR
-singleR_results = singleR.SingleR(
-    test=r_matrix,  # Expression matrix
-    ref=hpca,       # Reference dataset
-    labels=hpca.rx2("label.main")  # Reference labels
-)
+# Convert 'labels' to a Pandas Series in Python
+labels = pandas2ri.rpy2py(ro.r['labels'])
 
-# Extract cell type predictions
-predictions = pandas2ri.rpy2py(singleR_results.rx2('labels'))
+# If the conversion fails or the result is None, raise an exception
+if labels is None:
+    raise ValueError("The 'labels' object is NULL in R, conversion failed.")
 
-# Add predictions back to AnnData
-adata.obs['SingleR_CellType'] = predictions.values
+# Add the predictions back to AnnData
+adata.obs['SingleR_CellType'] = labels.values  # Assuming 'labels' are the cell type predictions
 
-# UMAP with SingleR predictions
+# Plot UMAP with SingleR predictions
 sc.pl.umap(adata, color='SingleR_CellType', title='SingleR Cell Type Annotation')
 
-# Save annotated dataset
+# Save the annotated dataset
 adata.write_h5ad("annotated_adata.h5ad")
 
 print("Script Finished Successfully")
+
+#hpca_df = pandas2ri.rpy2py(hpca)
+#str(hpca)
+#r_matrix = pandas2ri.py2rpy(expression_matrix)
+
+# Access the reference labels from the DataFrame
+#labels = hpca_df['label.main'].values  # Ensure this matches the actual column name in your DataFrame???My DataFrame
+
+# Run SingleR
+#singleR_results = singleR.SingleR(
+#    test=r_matrix,  # Expression matrix
+#    ref=hpca,       # Reference dataset
+#    labels=hpca.rx2("label.main")  # Reference labels
+#)
+
+# Extract cell type predictions
+#predictions = pandas2ri.rpy2py(singleR_results.rx2('labels'))
+
+# Add predictions back to AnnData
+#adata.obs['SingleR_CellType'] = predictions.values
+
+# UMAP with SingleR predictions
+#sc.pl.umap(adata, color='SingleR_CellType', title='SingleR Cell Type Annotation')
+
+# Save annotated dataset
+#adata.write_h5ad("annotated_adata.h5ad")
