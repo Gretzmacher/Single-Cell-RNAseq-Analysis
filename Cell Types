@@ -1,0 +1,161 @@
+#-----------------------------------------------------------------
+#------------------Libraries and Fig Parameters-------------------
+#-----------------------------------------------------------------
+import numpy as np
+import scanpy as sc
+import anndata as ad
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import scipy.sparse
+import rpy2.robjects as ro
+#from rpy2.robjects.packages import importr
+from rpy2.robjects import pandas2ri
+from upsetplot import UpSet
+from scipy.sparse import issparse
+
+# Activate pandas-R conversion
+#pandas2ri.activate()
+# Import required R libraries
+#base = importr('base')
+#utils = importr('utils')
+#singleR = importr('SingleR')
+#celldex = importr('celldex')
+
+# Load Human Primary Cell Atlas (HPCA) as a reference
+#hpca = celldex.HumanPrimaryCellAtlasData()
+
+import rpy2.robjects as ro
+from rpy2.robjects.packages import importr
+from rpy2.robjects import pandas2ri
+from rpy2.robjects import r
+
+# Activate the pandas-to-R dataframe converter
+pandas2ri.activate()
+
+# Import R packages
+BiocManager = importr("BiocManager")
+SingleR = importr("SingleR")
+celldex = importr("celldex")
+
+print("Libraries imported successfully.")
+
+sc.settings.set_figure_params(dpi=50, facecolor="white") #Dots per inch: Resolution of Plot !300or more is publication quality
+
+# Load and preprocess AnnData
+adata = sc.read_h5ad("preprocessed_with_clustering.h5ad")
+expression_matrix = pd.DataFrame(
+    adata.X.T.toarray(),
+    index=adata.var_names,
+    columns=adata.obs_names
+)
+
+# Prepare expression matrix for SingleR
+# Ensure data is not sparse, convert if necessary
+if not isinstance(adata.X, np.ndarray):
+    expression_matrix = pd.DataFrame(
+        adata.X.A.T,  # Dense array transpose (gene-by-cell format)
+        index=adata.var_names,  # Genes
+        columns=adata.obs_names  # Cells
+    )
+else:
+    expression_matrix = pd.DataFrame(
+        adata.X.T,  # Dense transpose
+        index=adata.var_names,
+        columns=adata.obs_names
+    )
+
+
+
+
+
+# Load HPCA reference
+hpca = celldex.HumanPrimaryCellAtlasData()
+# Extract the 'label.main' slot from hpca
+#ro.r('labels <- hpca@colData@listData$label.main')
+col_data = r['slot'](hpca, "colData") # Access the colData slot
+list_data = col_data.rx2("listData") # Access the listData element within colData
+labels = list_data.rx2("label.main") # Access the label.main element within listData
+
+# Convert Python matrix to R
+r_matrix = pandas2ri.py2rpy(expression_matrix)
+
+# Run SingleR
+singleR_results = SingleR.SingleR(test=r_matrix, ref=hpca, labels=labels)
+
+# Retrieve labels from SingleR results
+singleR_labels = ro.r("as.character")(singleR_results.rx2("labels"))
+
+# Map cell types back to clusters
+adata.obs['singleR_annotation'] = singleR_labels
+cluster_annotations = adata.obs.groupby('leiden')['singleR_annotation'].agg(
+    lambda x: x.value_counts().idxmax()
+)
+print(cluster_annotations)
+
+# Assign cluster-based annotations to AnnData
+adata.obs['cluster_annotation'] = adata.obs['leiden'].map(cluster_annotations)
+# Save the annotated data
+adata.write("preprocessed_with_annotations.h5ad")
+
+# Plot UMAP with cluster annotations
+sc.pl.umap(adata, color='cluster_annotation', legend_loc='on data', frameon=False)
+
+
+
+# Ensure adata.X is dense
+#if isinstance(adata.X, scipy.sparse.spmatrix):
+#    expression_matrix = pd.DataFrame(
+#        adata.X.toarray(),  # Convert sparse matrix to dense
+#        index=adata.var_names,  # Genes
+#        columns=adata.obs_names  # Cells
+#    )
+#else:
+#    expression_matrix = pd.DataFrame(
+#        adata.X,  # Already dense
+#       index=adata.var_names,  # Genes
+#        columns=adata.obs_names  # Cells
+#    )
+
+
+#ro.globalenv['expr_matrix'] = pandas2ri.py2rpy(expression_matrix)
+
+# Load hpca and extract label.main field in R
+#ro.r('library(celldex)')  # Load celldex package in R
+#ro.r('hpca <- celldex::HumanPrimaryCellAtlasData()')  # Load the hpca dataset
+
+# Extract 'label.main' from hpca (which is in the colData of SummarizedExperiment)
+#ro.r('labels <- hpca@colData@listData$label.main')  # Extract the main cell labels
+#ro.r('print(labels)')  # Print labels to confirm they are extracted correctly
+
+# Convert the labels from R to Python
+#labels_r = ro.r('labels')  # Get the 'label.main' as an R object
+#print(type(labels_r))  # Check the type of the labels in Python
+
+# Convert labels to Python using manual extraction
+#labels = np.array(list(labels_r))
+#print(labels)  # Check the content of the labels
+#labels = pandas2ri.rpy2py(labels_r)  # Convert the R object to Python
+
+# Convert labels (numpy.ndarray) to Pandas Series
+#if isinstance(labels, np.ndarray):
+#    labels = pd.Series(labels)
+
+# Ensure the number of labels matches the number of cells in AnnData
+#if len(labels) != adata.n_obs:
+#    raise ValueError(
+#        f"Mismatch in number of labels ({len(labels)}) and AnnData observations ({adata.n_obs})"
+#    )
+
+
+# Add the labels to the AnnData object
+#adata.obs['SingleR_CellType'] = labels.values  # Ensure it's aligned with AnnData cells
+
+# Visualize the UMAP with SingleR predictions
+#sc.pl.umap(adata, color='SingleR_CellType', title='SingleR Cell Type Annotation')
+
+# Save the annotated dataset
+adata.write_h5ad("annotated_adata.h5ad")
+
+print("Script Finished Successfully")
